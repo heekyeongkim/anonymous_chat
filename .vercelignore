@@ -1,0 +1,5 @@
+*.pdf
+prof*/
+README.md
+.env*
+.vercel
