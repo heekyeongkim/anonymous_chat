@@ -53,6 +53,7 @@
   function isMine(m) { return !!m.local || !!m.demoMine || mineIds.indexOf(m.id) >= 0; }
 
   function cleanNick(v) { return (v || '').trim().slice(0, NICK_LEN) || DEFAULT_NICK; }
+  var firstVisit = load('chat_nick') === null;   // 처음 온 사람은 이름부터 정한다
   var nickname = cleanNick(load('chat_nick'));
 
   // ---------- 아바타 (닉네임마다 색이 정해짐) ----------
@@ -160,7 +161,7 @@
   }
 
   function sameGroup(a, b) {
-    return a && b && a.nickname === b.nickname && isMine(a) === isMine(b) &&
+    return a && b && !a.sys && !b.sys && a.nickname === b.nickname && isMine(a) === isMine(b) &&
       Math.abs(new Date(b.created_at) - new Date(a.created_at)) < GROUP_MS &&
       new Date(a.created_at).toDateString() === new Date(b.created_at).toDateString();
   }
@@ -178,7 +179,7 @@
   function render(forceBottom) {
     var stick = forceBottom || nearBottom();
     var showMsgs = view === 'ready' || view === 'offline';
-    var empty = messages.length === 0;
+    var empty = !messages.some(function (m) { return !m.sys; });   // 이름 알림만 있으면 아직 0건
 
     el.msgs.hidden = !showMsgs;
     el.guide.hidden = !(showMsgs && (empty || guideOpen));
@@ -195,6 +196,20 @@
         day.className = 'day';
         day.textContent = dayText(m.created_at);
         frag.appendChild(day);
+      }
+      if (m.sys) {                       // 이름 바꾼 알림: 가운데 작은 띠
+        var sys = document.createElement('div');
+        sys.className = 'sys' + (seen[m.id] ? '' : ' new');
+        seen[m.id] = 1;
+        var from = document.createElement('b'); from.textContent = m.from; from.style.color = whoColor(m.from);
+        var to = document.createElement('b'); to.textContent = m.to; to.style.color = whoColor(m.to);
+        sys.appendChild(document.createTextNode('✨ '));
+        sys.appendChild(from);
+        sys.appendChild(document.createTextNode(' 님이 '));
+        sys.appendChild(to);
+        sys.appendChild(document.createTextNode('(으)로 이름을 바꿨어요' + (m.mine ? ' · 나' : '')));
+        frag.appendChild(sys);
+        return;
       }
       var mine = isMine(m);
       var grouped = sameGroup(prev, m);
@@ -266,7 +281,7 @@
     el.input.placeholder = view === 'offline' ? '연결되면 보낼 수 있어요…' : '익명으로 입력…';
     el.input.style.height = 'auto';
     el.input.style.height = Math.min(el.input.scrollHeight, 130) + 'px';
-    Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (c) { c.disabled = !connected(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.chip:not(.gate-chip)'), function (c) { c.disabled = !connected(); });
   }
   el.input.addEventListener('input', updateComposer);
   el.input.addEventListener('keydown', function (e) {
@@ -300,16 +315,82 @@
   el.nickInput.addEventListener('blur', function () {
     if (!nickCancel) {
       var before = nickname;
-      nickname = cleanNick(el.nickInput.value);
-      save('chat_nick', nickname);
-      showNick();
-      if (before !== nickname) toast('이제 ‘' + nickname + '’ 이름으로 보여요', '되돌리기', function () {
-        nickname = before; save('chat_nick', nickname); showNick();
-      });
+      if (changeName(el.nickInput.value)) {
+        toast('이제 ‘' + nickname + '’ 이름으로 보여요', '되돌리기', function () { changeName(before); });
+      }
     }
     nickCancel = false;
     el.nickInput.hidden = true; el.nickBtn.hidden = false;
   });
+
+  // 이름 바꾸기: 저장하고, 방 안의 모두에게 알린다
+  var pendingRename = null;
+  function changeName(raw) {
+    var before = nickname;
+    var after = cleanNick(raw);
+    save('chat_nick', after);
+    if (after === before) return false;
+    nickname = after;
+    showNick();
+    // 연결 전이거나 연달아 바꾸면 처음 이름 → 마지막 이름 하나로 묶어서 알린다
+    pendingRename = { from: pendingRename ? pendingRename.from : before, to: after };
+    flushRename();
+    return true;
+  }
+  function flushRename() {
+    if (!pendingRename || !connected()) return;
+    var r = pendingRename;
+    pendingRename = null;
+    if (r.from === r.to) return;
+    addSys(r.from, r.to, true);
+    broadcast('rename', { from: r.from, to: r.to }).catch(function () {});
+  }
+  function addSys(from, to, mine) {
+    messages.push({ id: 'sys-' + newId(), sys: true, from: from, to: to, mine: !!mine,
+                    created_at: new Date().toISOString() });
+    render(true);
+  }
+
+  // ---------- 처음 들어올 때 이름 정하기 ----------
+  var ADJ = ['파란', '노란', '졸린', '신난', '배고픈', '반짝이는', '용감한', '느긋한', '수줍은', '씩씩한', '말랑한', '엉뚱한'];
+  var NOUN = ['고래', '우산', '감자', '고양이', '펭귄', '구름', '만두', '다람쥐', '호랑이', '토끼', '부엉이', '선인장'];
+  function randomName() {
+    return ADJ[Math.floor(Math.random() * ADJ.length)] + NOUN[Math.floor(Math.random() * NOUN.length)];
+  }
+  var gate = $('nameGate'), gateInput = $('gateInput'), gateChips = $('gateChips');
+  function fillGateChips() {
+    gateChips.textContent = '';
+    var used = {};
+    while (Object.keys(used).length < 3) used[randomName()] = 1;
+    Object.keys(used).forEach(function (n) {
+      var c = document.createElement('button');
+      c.type = 'button'; c.className = 'chip gate-chip'; c.textContent = n;
+      c.addEventListener('click', function () { gateInput.value = n; gateInput.focus(); });
+      gateChips.appendChild(c);
+    });
+  }
+  function openGate() {
+    gateInput.value = randomName();
+    fillGateChips();
+    gate.hidden = false;
+    setTimeout(function () { gateInput.focus(); gateInput.select(); }, 50);
+  }
+  function closeGate(name) {
+    gate.hidden = true;
+    if (name !== null) changeName(name);
+    else save('chat_nick', nickname);          // '익명'으로 들어가기: 다음부터 묻지 않음
+    el.input.focus();
+  }
+  $('gateDice').addEventListener('click', function () {
+    gateInput.value = randomName(); fillGateChips(); gateInput.focus(); gateInput.select();
+  });
+  $('gateForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = gateInput.value.trim();
+    if (!v) { gateInput.value = randomName(); gateInput.select(); return; }
+    closeGate(v);
+  });
+  $('gateSkip').addEventListener('click', function () { closeGate(null); });
 
   // ---------- 안내 · 새 글 ----------
   el.info.addEventListener('click', function () {
@@ -478,8 +559,19 @@
     if (!p || typeof p.key !== 'string' || p.key === myKey || !chan) return;
     var others = Object.keys(chan.presenceState()).filter(function (k) { return k !== p.key; }).sort();
     if (others[0] !== myKey) return;
-    var recent = messages.filter(function (m) { return !m.local; }).slice(-50).map(publicMsg);
+    var recent = messages.filter(function (m) { return !m.local && !m.sys; }).slice(-50).map(publicMsg);
     if (recent.length) broadcast('history', { to: p.key, messages: recent }).catch(function () {});
+  }
+  var renameSeen = {};
+  function onRename(p) {
+    if (!p || typeof p.from !== 'string' || typeof p.to !== 'string') return;
+    var from = cleanNick(p.from), to = cleanNick(p.to);
+    var now = Date.now();
+    if (from === to || (renameSeen[from + '>' + to] && now - renameSeen[from + '>' + to] < 3000)) return;
+    renameSeen[from + '>' + to] = now;
+    var wasBottom = nearBottom();
+    addSys(from, to, false);
+    if (!wasBottom) { unread++; el.newNum.textContent = unread; el.newPill.hidden = false; }
   }
   function onHistory(p) {
     if (!p || p.to !== myKey || !Array.isArray(p.messages)) return;
@@ -501,6 +593,7 @@
       .on('broadcast', { event: 'del' }, function (e) { onDel(e.payload); })
       .on('broadcast', { event: 'hello' }, function (e) { onHello(e.payload); })
       .on('broadcast', { event: 'history' }, function (e) { onHistory(e.payload); })
+      .on('broadcast', { event: 'rename' }, function (e) { onRename(e.payload); })
       .on('presence', { event: 'sync' }, function () {
         el.countNum.textContent = Object.keys(ch.presenceState()).length;
         el.count.hidden = false;
@@ -512,6 +605,7 @@
           setView('ready');
           ch.track({ at: Date.now() });
           broadcast('hello', { key: myKey }).catch(function () {});
+          flushRename();                             // 연결 전에 정한 이름 알리기
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           live = false; failCount++;
           if (view === 'loading' && failCount < 2) return;   // 처음 한 번은 조금 기다린다
@@ -529,7 +623,7 @@
   // ---------- 상태 미리보기 (?demo=1) ----------
   var DEMO_STATES = ['loading', 'empty', 'ready', 'offline', 'noserver'];
   var demoParam = params.get('demo');
-  var demoMode = demoParam === '1' || DEMO_STATES.indexOf(demoParam) >= 0;
+  var demoMode = demoParam === '1' || demoParam === 'name' || DEMO_STATES.indexOf(demoParam) >= 0;
   function demoData() {
     var t = Date.now();
     function at(min) { return new Date(t - min * 60000).toISOString(); }
@@ -569,12 +663,14 @@
     Array.prototype.forEach.call(el.demo.querySelectorAll('button'), function (b) {
       b.addEventListener('click', function () { runDemo(b.getAttribute('data-demo')); });
     });
-    runDemo(DEMO_STATES.indexOf(demoParam) >= 0 ? demoParam : 'ready');
+    if (demoParam === 'name') { runDemo('ready'); openGate(); }
+    else runDemo(DEMO_STATES.indexOf(demoParam) >= 0 ? demoParam : 'ready');
   } else if (!window.supabase || typeof SUPABASE_URL !== 'string' || typeof SUPABASE_ANON_KEY !== 'string') {
     setView('noserver');               // 접근 불가: 막기만 하지 않고 다음 행동 안내
   } else {
     client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     setView('loading');
     connect();
+    if (firstVisit) openGate();
   }
 })();

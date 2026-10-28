@@ -109,6 +109,22 @@
       </div>
     </footer>
 
+    <!-- 처음 들어올 때 이름 정하기 -->
+    <div class="name-gate" id="nameGate" hidden role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+      <form class="gate-card" id="gateForm" autocomplete="off">
+        <div class="card-emoji" aria-hidden="true">🎭</div>
+        <h2 id="gateTitle">채팅방에서 쓸 이름을 정해 주세요</h2>
+        <p>진짜 이름 말고 재미있는 별명이면 돼요.<br />나중에 언제든 바꿀 수 있어요.</p>
+        <div class="gate-row">
+          <input type="text" id="gateInput" maxlength="30" placeholder="별명" aria-label="별명" />
+          <button type="button" class="dice" id="gateDice" aria-label="다른 이름 추천" title="다른 이름 추천">🎲</button>
+        </div>
+        <div class="chips center" id="gateChips" aria-label="추천 이름"></div>
+        <button type="submit" class="gate-go">이 이름으로 들어가기</button>
+        <button type="button" class="link-btn" id="gateSkip">그냥 ‘익명’으로 들어갈게요</button>
+      </form>
+    </div>
+
     <!-- 잠깐 뜨는 알림 -->
     <div class="toast" id="toast" hidden role="status">
       <span id="toastText"></span>

@@ -182,6 +182,50 @@ button:disabled { cursor: default; }
 .msg.failed .mine-line { color: #ff9b9b; }
 .msg.deleting .bubble { opacity: .35; text-decoration: line-through; }
 
+/* 이름 바꾼 알림 */
+.sys {
+  align-self: center; margin: 12px 0 2px; padding: 5px 12px;
+  border-radius: 999px; font-size: 12px; color: var(--fg-2);
+  background: var(--surface-2); border: 1px solid var(--line);
+  text-align: center; max-width: 92%;
+}
+.sys.new { animation: pop .3s ease-out; }
+.sys b { font-weight: 800; }
+
+/* 처음 이름 정하기 */
+.name-gate {
+  position: absolute; inset: 0; z-index: 20;
+  display: grid; place-items: center; padding: 16px;
+  background: rgb(5 8 14 / .72); backdrop-filter: blur(6px);
+}
+.gate-card {
+  width: 100%; max-width: 380px; padding: 26px 22px 18px;
+  border-radius: 22px; text-align: center;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+  animation: pop .25s ease-out;
+}
+.gate-card h2 { margin: 10px 0 6px; font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.gate-card p { margin: 0 0 16px; font-size: 13px; line-height: 1.55; color: var(--fg-2); }
+.gate-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.gate-row input {
+  flex: 1; min-width: 0; height: 48px; padding: 0 14px;
+  font: inherit; font-size: 17px; font-weight: 700; text-align: center; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--primary); border-radius: 14px; outline: none;
+}
+.dice {
+  width: 48px; height: 48px; flex-shrink: 0; font-size: 22px;
+  border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2);
+  transition: transform .2s;
+}
+.dice:active { transform: rotate(180deg) scale(.92); }
+.gate-go {
+  width: 100%; height: 48px; margin: 16px 0 10px; border: 0; border-radius: 14px;
+  background: var(--grad); color: var(--on-primary); font-size: 15px; font-weight: 800;
+  box-shadow: 0 8px 22px -10px rgb(47 180 255 / .9);
+}
+.gate-go:active { transform: scale(.98); }
+
 /* 새 글 알림 */
 .new-pill {
   position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
